@@ -1,33 +1,39 @@
 # vault-mcp
 
-Obsidian vault'una (`alpgiraykelem/projects-wiki` GitHub reposu) Claude.ai üzerinden erişim sağlayan **Remote HTTP MCP Server**.
+A self-hostable **remote HTTP MCP server** that gives Claude (web, mobile, and desktop) full read/write access to an Obsidian vault stored in a GitHub repository.
 
-İki auth modu birlikte çalışır:
-- **Static Bearer** — Claude Desktop / `mcp-remote` / API testleri için
-- **OAuth 2.1** (DCR + PKCE) — Claude.ai web + mobil custom connector için
+Most MCP examples are local stdio servers. This is a complete, production-style **remote** server with the parts people actually struggle with:
+
+- **OAuth 2.1** with Dynamic Client Registration (RFC 7591) + PKCE (S256) — works as a Claude.ai custom connector on web and mobile
+- **Static Bearer** mode — for Claude Desktop via `mcp-remote`, or plain API testing
+- **Streamable HTTP** transport, session-based
+- Single Dockerfile, deploys in minutes on Coolify or any Docker host
+
+Both auth modes run side by side on the same server.
 
 ## Tools
 
-| Tool | Açıklama |
+| Tool | Description |
 |---|---|
-| `vault_search` | Tam-metin arama (GitHub code search) |
-| `note_read` | Not içeriğini döndürür |
-| `note_write` | Not oluşturur veya overwrite eder |
-| `note_append` | Mevcut notun sonuna ekler |
-| `list_notes` | Klasördeki dosyaları listeler |
-| `get_tags` | Frontmatter / inline tag filtresi |
+| `vault_search` | Full-text search across the vault (GitHub code search) |
+| `note_read` | Return a note's content |
+| `note_write` | Create or overwrite a note |
+| `note_append` | Append to an existing note |
+| `list_notes` | List files in a folder |
+| `get_tags` | Filter notes by frontmatter / inline tags |
 
-## Yerel Geliştirme
+## Quick start (local)
 
 ```bash
 cp .env.example .env
-# .env'i doldur — minimum: GITHUB_TOKEN + (MCP_BEARER_TOKEN veya OWNER_PASSWORD+PUBLIC_URL)
+# Fill in .env — minimum: GITHUB_TOKEN + (MCP_BEARER_TOKEN or OWNER_PASSWORD+PUBLIC_URL)
 npm install
 npm run dev
 curl http://localhost:3000/health
 ```
 
-### MCP Inspector ile test
+### Test with MCP Inspector
+
 ```bash
 npx @modelcontextprotocol/inspector
 # Transport: Streamable HTTP
@@ -35,32 +41,41 @@ npx @modelcontextprotocol/inspector
 # Header: Authorization: Bearer <MCP_BEARER_TOKEN>
 ```
 
-## Deploy — Coolify
+## Configuration
 
-1. Coolify panelinde **+ New Resource** → **Public/Private Git Repository**
-2. Repo: `alpgiraykelem/vault-mcp` (private — SSH key veya GitHub App ile bağla)
+| Variable | Description |
+|---|---|
+| `GITHUB_TOKEN` | Fine-grained PAT with contents read/write on your vault repo |
+| `GITHUB_OWNER` / `GITHUB_REPO` / `GITHUB_BRANCH` | The repo that holds your Obsidian vault |
+| `MCP_BEARER_TOKEN` | Enables static bearer mode — `openssl rand -hex 32` |
+| `PUBLIC_URL` | Public HTTPS URL of the server (required for OAuth) |
+| `OWNER_PASSWORD` | Master password for the OAuth consent screen — `openssl rand -base64 24` (you'll type it on your phone, keep it manageable) |
+| `PORT` | Default `3000` |
+
+Leave `MCP_BEARER_TOKEN` or the OAuth variables empty to disable that mode.
+
+## Deploy — Coolify (or any Docker host)
+
+1. Coolify panel → **+ New Resource** → **Public/Private Git Repository**
+2. Repo: your fork/clone of `vault-mcp`
 3. Build pack: **Dockerfile**
-4. **Environment Variables**:
-   - `GITHUB_TOKEN`, `GITHUB_OWNER=alpgiraykelem`, `GITHUB_REPO=projects-wiki`, `GITHUB_BRANCH=main`
-   - `MCP_BEARER_TOKEN` — `openssl rand -hex 32`
-   - `PUBLIC_URL=https://mcp.alpgiraykelem.com` (Coolify'da bağlayacağın domain)
-   - `OWNER_PASSWORD` — `openssl rand -base64 24` (telefonda yazılacağı için aşırı uzun olmasın)
-   - `PORT=3000`
-5. **Domains**: `mcp.alpgiraykelem.com` → Let's Encrypt otomatik
-6. Deploy → `curl https://mcp.alpgiraykelem.com/health` ile doğrula
+4. Set the **environment variables** above (use Coolify's secret fields for tokens)
+5. **Domains**: e.g. `mcp.yourdomain.com` → automatic Let's Encrypt
+6. Deploy → verify with `curl https://mcp.yourdomain.com/health`
 
-## Claude.ai web/mobil — Custom Connector ekleme
+## Connect from Claude.ai (web / mobile) — OAuth
 
 1. Claude.ai → **Settings** → **Connectors** → **Add custom connector**
-2. URL: `https://mcp.alpgiraykelem.com/mcp`
-3. Claude tarayıcı içinde otomatik olarak `/.well-known/oauth-authorization-server` çekecek, `/register` ile dynamic client register edecek, `/authorize` ekranını açacak
-4. Master password'ünü gir → **Onayla**
-5. Claude `/token` ile access token alır (1 saatlik) ve `/mcp` çağrılarına bearer olarak ekler
-6. Tools artık konuşmada görünür
+2. URL: `https://mcp.yourdomain.com/mcp`
+3. Claude automatically fetches `/.well-known/oauth-authorization-server`, registers itself via `/register` (DCR), and opens the `/authorize` consent screen
+4. Enter your master password → **Approve**
+5. Claude exchanges the code at `/token` (PKCE) and attaches the access token (1h TTL) to `/mcp` calls
+6. The tools appear in your conversations
 
-## Claude Desktop — Static Bearer modu
+## Connect from Claude Desktop — Static Bearer
 
 `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
 ```json
 {
   "mcpServers": {
@@ -69,7 +84,7 @@ npx @modelcontextprotocol/inspector
       "args": [
         "-y",
         "mcp-remote",
-        "https://mcp.alpgiraykelem.com/mcp",
+        "https://mcp.yourdomain.com/mcp",
         "--header",
         "Authorization: Bearer YOUR_MCP_BEARER_TOKEN"
       ]
@@ -78,37 +93,62 @@ npx @modelcontextprotocol/inspector
 }
 ```
 
-## Mimari
+## Architecture
 
 - **Transport**: Streamable HTTP (`/mcp`), session-based
-- **Storage**: in-memory client/code/token store. Tek instance için yeterli; multi-instance deploy yapacaksan Redis adapter ekle
-- **Token TTL**: access 1 saat, refresh süresiz (manuel revoke için restart)
-- **PKCE**: S256 zorunlu (MCP spec)
-- **DCR**: açık — Claude.ai dynamic register yapar, manuel client kurmana gerek yok
+- **Storage**: in-memory client/code/token store. Fine for a single instance; add a Redis adapter for multi-instance deploys
+- **Token TTL**: access 1 hour, refresh unlimited (restart the server to revoke)
+- **PKCE**: S256 required (per MCP spec)
+- **DCR**: open — Claude.ai registers dynamically, no manual client setup
 
-## Endpoint listesi
+## Endpoints
 
-| Endpoint | Method | Auth | Açıklama |
+| Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/health` | GET | yok | sağlık + auth modu |
+| `/health` | GET | none | health + active auth modes |
 | `/mcp` | POST | Bearer | MCP JSON-RPC |
-| `/.well-known/oauth-authorization-server` | GET | yok | RFC 8414 metadata |
-| `/.well-known/oauth-protected-resource` | GET | yok | RFC 9728 metadata |
-| `/register` | POST | yok | RFC 7591 DCR |
-| `/authorize` | GET/POST | password | onay formu |
+| `/.well-known/oauth-authorization-server` | GET | none | RFC 8414 metadata |
+| `/.well-known/oauth-protected-resource` | GET | none | RFC 9728 metadata |
+| `/register` | POST | none | RFC 7591 Dynamic Client Registration |
+| `/authorize` | GET/POST | password | consent form |
 | `/token` | POST | PKCE | code → access_token |
 
-## Güvenlik notları
+## Security notes
 
-- Static bearer ile OAuth aynı server'da koşar — birini kullanmıyorsan env'i boş bırak
-- `OWNER_PASSWORD`'ü loglara yazma. Coolify "secret" alanına gir
-- HTTPS zorunlu — Claude.ai HTTP redirect kabul etmez
-- Token rotation: yeni `MCP_BEARER_TOKEN` üret + restart. OAuth tokenları zaten 1 saat TTL.
+- Static bearer and OAuth run on the same server — leave the unused mode's env vars empty to disable it
+- Never log `OWNER_PASSWORD`; use your platform's secret fields
+- HTTPS is mandatory — Claude.ai rejects HTTP redirects
+- Token rotation: generate a new `MCP_BEARER_TOKEN` + restart. OAuth tokens already expire after 1 hour
 
-## TODO
+## Roadmap
 
 - [ ] Conflict handling (ETag/sha mismatch retry)
-- [ ] Persistent token store (SQLite) → restart sonrası kullanıcı re-auth gerektirmesin
-- [ ] Structured log (pino) + request id
-- [ ] Rate limit
+- [ ] Persistent token store (SQLite) so restarts don't force re-auth
+- [ ] Structured logging (pino) + request IDs
+- [ ] Rate limiting
 - [ ] Test suite
+- [ ] Extract the OAuth 2.1 (DCR + PKCE) layer into a standalone reusable module
+
+## License
+
+MIT License
+
+Copyright (c) 2026 Alpgiray Kelem
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
