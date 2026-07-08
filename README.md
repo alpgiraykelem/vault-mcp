@@ -1,8 +1,25 @@
 # vault-mcp
 
-A self-hostable **remote HTTP MCP server** that gives Claude (web, mobile, and desktop) full read/write access to an Obsidian vault stored in a GitHub repository.
+**The access layer of a self-organizing second brain.** A self-hostable remote HTTP MCP server that connects Claude (web, mobile, and desktop) to a living Obsidian knowledge graph — with full read/write access, from any device.
 
-Most MCP examples are local stdio servers. This is a complete, production-style **remote** server with the parts people actually struggle with:
+![Vault graph view — 1,500+ interconnected notes](src/Screenshot%202026-07-08%20at%2012.01.24.png)
+
+## The system behind it
+
+This server is one piece of a larger experiment I've been running for six months: a knowledge base that observes how I work and turns repetition into automation.
+
+- **Observers** on my Mac (git observer, session logger, vault tracker) feed the vault continuously
+- Recurring workflows mature through five stages — *trace → path → trail → reflex → muscle memory*. A workflow seen 3 times becomes a proposed "trail"; at stage 5 it becomes a deterministic script that **spends zero tokens**
+- Unused trails decay like synapses: confidence drops 5% per idle month, rises 8% per use. The system forgets what I stopped needing
+- The payoff is **cost optimization through reuse**: when I ask for an admin panel in a new project, the system scans my past implementations and pulls the proven base — Claude spends tokens only on what's genuinely new
+
+![Admin panel patterns hub — one note connecting NextAuth config, audit logging, media uploader and the admin-panel-kur trail across projects](src/Screenshot%202026-07-08%20at%2012.07.04.png)
+
+vault-mcp is what makes this brain reachable from Claude anywhere: the phone, the browser, the desktop. It's also the part most useful to others as-is, because remote MCP servers with proper OAuth are still rare. The observer scripts and trail tooling are next in line to be open-sourced.
+
+## What's in this repo
+
+A complete, production-style **remote** MCP server with the parts people actually struggle with:
 
 - **OAuth 2.1** with Dynamic Client Registration (RFC 7591) + PKCE (S256) — works as a Claude.ai custom connector on web and mobile
 - **Static Bearer** mode — for Claude Desktop via `mcp-remote`, or plain API testing
@@ -128,27 +145,8 @@ Leave `MCP_BEARER_TOKEN` or the OAuth variables empty to disable that mode.
 - [ ] Rate limiting
 - [ ] Test suite
 - [ ] Extract the OAuth 2.1 (DCR + PKCE) layer into a standalone reusable module
+- [ ] Open-source the rest of the second brain: observer scripts, trail maturity model, confidence decay tooling
 
 ## License
 
-MIT License
-
-Copyright (c) 2026 Alpgiray Kelem
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+MIT
